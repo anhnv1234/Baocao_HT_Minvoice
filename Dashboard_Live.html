@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Đại Ca - LIVE API MONITOR V6.2</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <style>
+        /* === CORE VARIABLES === */
+        :root {
+            --bg-dark: #0f1115;
+            --bg-card: #181b21;
+            --text-main: #e0e0e0;
+            --text-muted: #848e9c;
+            --accent: #00e396;
+            --accent-glow: rgba(0, 227, 150, 0.25);
+            --danger: #ff4560;
+            --warning: #feb019;
+            --purple: #775dd0;
+            --border: #2b3139;
+            --primary: #2962ff;
+            --nav-height: 60px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: var(--bg-dark); 
+            color: var(--text-main); 
+            font-size: 13px;
+            overflow-x: hidden; 
+        }
+
+        /* === LOADING SPINNER === */
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 9999; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; backdrop-filter: blur(5px);
+            display: none; 
+        }
+        .loader { border: 5px solid #f3f3f3; border-top: 5px solid var(--accent); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* === MENU BAR === */
+        .top-navbar {
+            height: var(--nav-height);
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 30px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+
+        .nav-left { display: flex; align-items: center; gap: 30px; }
+        .nav-logo { font-size: 18px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 10px; letter-spacing: 1px; white-space: nowrap; }
+
+        .date-filter-container {
+            display: flex; align-items: center; gap: 10px; background: #232832; padding: 5px 15px; border-radius: 6px; border: 1px solid var(--border);
+        }
+        .date-input { background: transparent; border: 1px solid #444; color: #fff; padding: 5px 10px; border-radius: 4px; font-family: 'Inter', sans-serif; font-size: 12px; outline: none; color-scheme: dark; }
+        .date-input:focus { border-color: var(--primary); }
+        .btn-filter { background: var(--primary); color: #fff; border: none; padding: 6px 15px; border-radius: 4px; font-weight: 600; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+        .btn-filter:hover { background: #1e4bd1; box-shadow: 0 0 10px rgba(41, 98, 255, 0.4); }
+
+        .nav-menu { display: flex; gap: 5px; height: 100%; }
+        .nav-item { color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 13px; padding: 0 20px; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.5px; height: 100%; white-space: nowrap; }
+        .nav-item:hover { color: #fff; background: rgba(255,255,255,0.03); }
+        .nav-item.active { color: var(--accent); border-bottom-color: var(--accent); background: linear-gradient(to bottom, transparent, rgba(0, 227, 150, 0.05)); }
+        .nav-icon { font-size: 16px; }
+
+        /* === MAIN LAYOUT === */
+        .container { 
+            max-width: 1700px; margin: 20px auto; padding: 0 20px;
+            display: grid; grid-template-columns: 300px 1fr; gap: 20px; 
+        }
+        
+        .sidebar { background: var(--bg-card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); height: fit-content; }
+        .main-content { display: flex; flex-direction: column; gap: 20px; }
+
+        /* Sidebar Elements */
+        .profile-card { text-align: center; margin-bottom: 20px; }
+        .avatar { width: 80px; height: 80px; background: linear-gradient(45deg, var(--accent), #008ffb); border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; color: #fff; box-shadow: 0 0 20px var(--accent-glow); }
+        select.profile-select { width: 100%; padding: 10px; background: #232832; border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; margin-bottom: 15px; cursor: pointer; font-weight: 600; outline: none; transition: border 0.3s; }
+        select.profile-select:focus { border-color: var(--primary); }
+        
+        .badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .badge-live { background: rgba(0, 227, 150, 0.2); color: var(--accent); }
+        
+        .kpi-list { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; }
+        .kpi-stat { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px; }
+        .kpi-label { color: var(--text-muted); }
+        .kpi-val { font-weight: 700; color: #fff; display: flex; align-items: center; gap: 5px; }
+        
+        .trend-up { color: var(--accent); font-size: 10px; } 
+        .trend-down { color: var(--danger); font-size: 10px; }
+        .trend-neutral { color: var(--text-muted); font-size: 10px; }
+
+        .sidebar-sub-header {
+            font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; 
+            margin: 15px 0 10px 0; border-bottom: 1px dashed var(--border); padding-bottom: 5px;
+        }
+
+        /* Metrics */
+        .detailed-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; grid-auto-flow: dense; }
+        .metric-card { 
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 15px; 
+            transition: all 0.2s; cursor: pointer; position: relative; overflow: hidden;
+        }
+        .metric-card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .metric-card:active { transform: scale(0.98); }
+        
+        .m-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2b3139; padding-bottom: 8px; margin-bottom: 10px; }
+        .m-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .m-growth { font-size: 11px; font-weight: 600; }
+        .m-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .m-label { font-size: 12px; color: #b0b0b0; display: flex; align-items: center; gap: 5px; }
+        .m-val { font-size: 14px; font-weight: 700; }
+        .m-val-total { font-size: 18px; font-weight: 700; color: #fff; }
+        .minutes-badge { background: #232832; color: var(--accent); padding: 3px 8px; border-radius: 4px; font-size: 11px; border: 1px solid #444; font-family: 'Consolas', monospace; letter-spacing: -0.5px; }
+        
+        .c-in { color: var(--primary); }
+        .c-out { color: var(--warning); }
+        .c-sla { color: var(--danger); }
+        
+        .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .dot-in { background: var(--primary); }
+        .dot-out { background: var(--warning); }
+        .dot-sla { background: var(--danger); }
+
+        /* Charts */
+        .chart-section { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .chart-box { background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .chart-container-fixed { position: relative; height: 350px; width: 100%; }
+
+        /* SCATTER CHART SECTION */
+        .scatter-section { background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); }
+        .scatter-container { position: relative; height: 400px; width: 100%; }
+
+        /* === MODAL POPUP STYLE === */
+        .modal { display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.8); backdrop-filter: blur(5px); animation: fadeIn 0.3s; }
+        .modal-content { background-color: var(--bg-card); margin: 5% auto; padding: 25px; border: 1px solid var(--border); width: 80%; max-width: 1000px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; animation: slideIn 0.3s; }
+        .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .close-btn:hover { color: #fff; text-shadow: 0 0 10px #fff; }
+        .modal-header h2 { color: var(--accent); margin-bottom: 5px; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        .modal-subtitle { color: var(--text-muted); font-size: 13px; margin-bottom: 20px; border-bottom: 1px dashed var(--border); padding-bottom: 10px;}
+        .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+        .modal-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; background: #0f1115; padding: 15px; border-radius: 8px; border: 1px solid var(--border); }
+        .stat-box-detail { text-align: center; padding: 10px; border-radius: 6px; background: rgba(255,255,255,0.03); }
+        .stat-box-detail .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+        .stat-box-detail .val { font-size: 18px; font-weight: bold; color: #fff; margin-top: 5px; }
+
+        @keyframes fadeIn { from {opacity: 0} to {opacity: 1} }
+        @keyframes slideIn { from {transform: translateY(-50px)} to {transform: translateY(0)} }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr; }
+            .chart-section { grid-template-columns: 1fr; }
+            .top-navbar { padding: 0 10px; overflow-x: auto; flex-direction: column; height: auto; gap: 10px; padding-bottom: 10px;}
+            .nav-left { flex-direction: column; width: 100%; gap: 10px; }
+            .date-filter-container { width: 100%; justify-content: space-between; }
+            .modal-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+    <div class="loader"></div>
+    <div style="color: #fff; font-weight: bold; font-size: 16px;">Đệ đang lên Drive lấy hàng, đại ca đợi tí...</div>
+</div>
+
+<header class="top-navbar">
+    <div class="nav-left">
+        <div class="nav-logo">
+            <span style="font-size: 20px;">🚀</span> MONITOR V6.2 ULTRA
+        </div>
+        
+        <div class="date-filter-container">
+            <span style="color: #848e9c; font-size: 14px;">📅</span>
+            <input type="date" id="dateStart" class="date-input">
+            <span style="color: #848e9c;">-</span>
+            <input type="date" id="dateEnd" class="date-input">
+            <button class="btn-filter" onclick="fetchDataFromAPI()">Lọc Dữ Liệu</button>
+        </div>
+    </div>
+
+    <nav class="nav-menu">
+        <a class="nav-item active" href="#">
+            <span class="nav-icon">👤</span> Báo cáo từng người
+        </a>
+        <a class="nav-item" href="Group_Report.html" target="_blank">
+            <span class="nav-icon">👥</span> Báo cáo theo nhóm
+        </a>
+        <a class="nav-item" href="#">
+            <span class="nav-icon">☁️</span> Kết nối Drive
+        </a>
+    </nav>
+</header>
+
+<div class="container">
+    <aside class="sidebar">
+        <div class="profile-card">
+            <div class="avatar" id="u-avatar">?</div>
+            <h3 id="u-name" style="margin-bottom: 5px;">Đang tải...</h3>
+            <span class="badge badge-live">● Live Data</span>
+        </div>
+
+        <label style="color: var(--text-muted); font-size: 11px;">CHỌN ĐỆ TỬ:</label>
+        <select class="profile-select" id="profileSelector" onchange="switchProfile()">
+            <option value="">-- Chờ tải dữ liệu --</option>
+        </select>
+
+        <div class="kpi-list">
+            <h4 style="color: var(--text-muted); font-size: 12px; text-transform: uppercase;">TỔNG KẾT (THEO LỌC)</h4>
+            
+            <div class="kpi-stat">
+                <span class="kpi-label">Số ngày đi làm</span>
+                <span class="kpi-val" id="kpi-days">0/0</span>
+            </div>
+
+            <div class="kpi-stat">
+                <span class="kpi-label">Tổng HT Trong Giờ</span>
+                <span class="kpi-val" id="kpi-in" style="color: var(--primary);">0</span>
+            </div>
+
+            <div class="kpi-stat">
+                <span class="kpi-label">Tổng HT Ngoài Giờ</span>
+                <span class="kpi-val" id="kpi-out" style="color: var(--warning);">0</span>
+            </div>
+            
+            <div class="kpi-stat">
+                <span class="kpi-label">TỔNG TICKET</span>
+                <span class="kpi-val" style="font-size: 15px;" id="kpi-total">0</span>
+            </div>
+             <div class="kpi-stat">
+                <span class="kpi-label">Tăng trưởng</span>
+                <span class="kpi-val" id="kpi-growth">0%</span>
+            </div>
+
+            <div class="sidebar-sub-header">CHẤT LƯỢNG (SLA)</div>
+            
+            <div class="kpi-stat">
+                <span class="kpi-label">Tổng Quá SLA</span>
+                <span class="kpi-val">
+                    <span id="kpi-sla-count" style="color: var(--danger);">0</span>
+                    <span id="kpi-sla-growth" style="margin-left:5px"></span>
+                </span>
+            </div>
+            <div class="kpi-stat">
+                <span class="kpi-label">Tỷ lệ SLA</span>
+                <span class="kpi-val" id="kpi-sla-rate" style="color: var(--danger);">0%</span>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="detailed-grid" id="detailedGrid"></div>
+
+        <div class="chart-section">
+            <div class="chart-box">
+                <div class="chart-header">
+                    <h3>📊 Hiệu Suất (Theo ngày)</h3>
+                    <div class="badge badge-live">Live Data</div>
+                </div>
+                <div class="chart-container-fixed">
+                    <canvas id="dailyChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-box">
+                <div class="chart-header">
+                    <h3>🍰 Tỷ trọng Sản Phẩm (%)</h3>
+                </div>
+                <div class="chart-container-fixed">
+                    <canvas id="comparisonChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-box">
+            <div class="chart-header">
+                <h3>⏰ Trọng số sản phẩm theo khung giờ (0h - 24h)</h3>
+                <div style="font-size:11px; color:#848e9c">Cộng dồn các ngày đang chọn</div>
+            </div>
+            <div class="chart-container-fixed">
+                <canvas id="hourlyChart"></canvas>
+            </div>
+        </div>
+
+        <div class="scatter-section">
+            <div class="chart-header">
+                <h3>📍 Mật độ lỗi (Trục X: Thời gian thực)</h3>
+                <div style="font-size:11px; color:#848e9c">
+                    <span class="dot dot-sla"></span> Quá SLA
+                </div>
+            </div>
+            <div class="scatter-container">
+                <canvas id="scatterChart"></canvas>
+            </div>
+        </div>
+        
+    </main>
+</div>
+
+<div id="detailModal" class="modal">
+  <div class="modal-content">
+    <span class="close-btn" onclick="closeDetail()">&times;</span>
+    <div class="modal-header">
+        <h2 id="modalTitle">DETAIL NAME</h2>
+        <div class="modal-subtitle">Chi tiết hiệu suất & So sánh với Team</div>
+    </div>
+
+    <div class="modal-stats">
+        <div class="stat-box-detail" style="border-bottom: 2px solid var(--primary);">
+            <div class="lbl">Trong giờ</div>
+            <div class="val" id="d-in">0</div>
+        </div>
+        <div class="stat-box-detail" style="border-bottom: 2px solid var(--warning);">
+            <div class="lbl">Ngoài giờ</div>
+            <div class="val" id="d-out">0</div>
+        </div>
+        <div class="stat-box-detail" style="border-bottom: 2px solid var(--danger);">
+            <div class="lbl">Quá SLA</div>
+            <div class="val" id="d-sla">0</div>
+        </div>
+        <div class="stat-box-detail" style="border-bottom: 2px solid #fff;">
+            <div class="lbl">Tổng cộng</div>
+            <div class="val" id="d-total">0</div>
+        </div>
+    </div>
+
+    <div class="modal-grid">
+        <div class="chart-box">
+             <div class="chart-header">
+                <h3 style="font-size: 13px;">🍰 Tỷ trọng Sản Phẩm</h3>
+            </div>
+            <div style="height: 300px; position: relative;">
+                <canvas id="detailDailyChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-box">
+            <div class="chart-header">
+                <h3 style="font-size: 13px;">👥 So với Team</h3>
+            </div>
+            <div style="height: 300px; position: relative;">
+                <canvas id="detailTeamChart"></canvas>
+            </div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    Chart.register(ChartDataLabels);
+
+    let db = {}; 
+
+    function initDateRange() {
+        const today = new Date();
+        const lastWeek = new Date();
+        lastWeek.setDate(today.getDate() - 7);
+        document.getElementById('dateStart').value = lastWeek.toISOString().split('T')[0];
+        document.getElementById('dateEnd').value = today.toISOString().split('T')[0];
+    }
+
+    async function fetchDataFromAPI() {
+        const d1 = document.getElementById('dateStart').value;
+        const d2 = document.getElementById('dateEnd').value;
+        const loading = document.getElementById('loading-overlay');
+        
+        loading.style.display = 'flex'; 
+        
+        try {
+            const response = await fetch(`http://127.0.0.1:5000/api/get-data?start=${d1}&end=${d2}`);
+            if (!response.ok) throw new Error("Lỗi kết nối Server Python!");
+            
+            db = await response.json();
+            updateAgentDropdown();
+            
+            const firstKey = Object.keys(db)[0];
+            if(firstKey) {
+                document.getElementById('profileSelector').value = firstKey;
+                switchProfile(); 
+            } else {
+                alert("Không có dữ liệu trong khoảng thời gian này!");
+            }
+        } catch (error) {
+            alert("⚠️ TOANG: " + error.message);
+            console.error(error);
+        } finally {
+            loading.style.display = 'none'; 
+        }
+    }
+
+    function updateAgentDropdown() {
+        const select = document.getElementById('profileSelector');
+        select.innerHTML = '';
+        Object.keys(db).forEach(key => {
+            const opt = document.createElement('option');
+            opt.value = key;
+            opt.innerText = db[key].name;
+            select.appendChild(opt);
+        });
+    }
+
+    // --- [FIX] FORMAT THỜI GIAN CÓ GIÂY ---
+    function formatTime(totalMinutes) {
+        if (!totalMinutes || totalMinutes === 0) return '0s';
+        const h = Math.floor(totalMinutes / 60);
+        const m = Math.floor(totalMinutes % 60);
+        const s = Math.round((totalMinutes * 60) % 60); 
+        
+        const pad = (num) => num.toString().padStart(2, '0');
+        
+        if (h > 0) return `${h}h ${pad(m)}p ${pad(s)}s`;
+        if (m > 0) return `${m}p ${pad(s)}s`;
+        return `${s}s`;
+    }
+
+    function renderGrowth(val, id) {
+        const el = document.getElementById(id);
+        if(!el) return;
+        if (val > 0) { el.innerText = `+${val}% ↗`; el.className = "trend-up"; } 
+        else if (val < 0) { el.innerText = `${val}% ↘`; el.className = "trend-down"; } 
+        else { el.innerText = "-"; el.className = "trend-neutral"; }
+    }
+
+    function renderDetailedMetrics(metrics) {
+        const container = document.getElementById('detailedGrid');
+        container.innerHTML = '';
+        
+        metrics.forEach(m => {
+            const total = m.in + m.out;
+            let growthHtml = '';
+            if(m.growth > 0) growthHtml = `<span class="trend-up">+${m.growth}% ↗</span>`;
+            else if(m.growth < 0) growthHtml = `<span class="trend-down">${m.growth}% ↘</span>`;
+            else growthHtml = `<span style="color:#777">0% -</span>`;
+
+            let footerHtml = '';
+            let headerBadge = '';
+
+            if (m.minutes !== undefined && m.minutes !== null) {
+                const formattedTime = formatTime(m.minutes);
+                headerBadge = `<span class="minutes-badge">📞 Call</span>`;
+                
+                footerHtml = `
+                <div class="m-row">
+                    <span class="m-label"><span class="dot" style="background:var(--purple)"></span> Tổng thời gian</span>
+                    <span class="m-val" style="color: var(--purple); font-family: 'Consolas', monospace; font-size:12px">
+                        ${formattedTime}
+                    </span>
+                </div>`;
+            } else {
+                if (m.sla !== undefined) {
+                    const slaRate = total > 0 ? ((m.sla / total) * 100).toFixed(1) : 0;
+                    const slaStyle = m.sla > 0 ? "color:#ff4560;" : "color:#444;"; 
+                    footerHtml = `
+                    <div class="m-row">
+                        <span class="m-label"><span class="dot dot-sla"></span> Quá SLA</span>
+                        <span class="m-val" style="${slaStyle}">
+                            ${m.sla} <span style="font-size:11px; opacity:0.8">(${slaRate}%)</span>
+                        </span>
+                    </div>`;
+                }
+            }
+
+            const html = `
+                <div class="metric-card" onclick="openDetail('${m.id}')">
+                    <div class="m-header">
+                        <div class="m-title">
+                            ${m.name} ${headerBadge}
+                        </div>
+                        <span class="m-growth">${growthHtml}</span>
+                    </div>
+                    <div class="m-row">
+                        <span class="m-label"><span class="dot dot-in"></span> Trong giờ</span>
+                        <span class="m-val c-in">${m.in}</span>
+                    </div>
+                    <div class="m-row">
+                        <span class="m-label"><span class="dot dot-out"></span> Ngoài giờ</span>
+                        <span class="m-val c-out">${m.out}</span>
+                    </div>
+                    
+                    ${footerHtml}
+                    
+                    <div style="height:1px; background:#2b3139; margin: 8px 0;"></div>
+                    <div class="m-row" style="margin-bottom:0">
+                        <span class="m-label" style="color:#fff">Tổng cộng</span>
+                        <span class="m-val-total">${total}</span>
+                    </div>
+                </div>`;
+            container.innerHTML += html;
+        });
+    }
+
+    let dailyChart, compChart, scatterChart, hourlyChart;
+
+    function updateCharts(data) {
+        const ctxDaily = document.getElementById('dailyChart').getContext('2d');
+        const ctxComp = document.getElementById('comparisonChart').getContext('2d');
+        const ctxScatter = document.getElementById('scatterChart').getContext('2d');
+        const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
+        
+        const dStart = document.getElementById('dateStart').value;
+        const dEnd = document.getElementById('dateEnd').value;
+
+        Chart.defaults.color = '#848e9c';
+        Chart.defaults.borderColor = '#2b3139';
+
+        if(dailyChart) dailyChart.destroy();
+        if(compChart) compChart.destroy();
+        if(scatterChart) scatterChart.destroy();
+        if(hourlyChart) hourlyChart.destroy();
+
+        dailyChart = new Chart(ctxDaily, {
+            type: 'bar',
+            data: {
+                labels: ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'],
+                datasets: [
+                    { label: 'Trong giờ', data: data.charts.dailyIn, backgroundColor: '#2962ff', borderRadius: 4 },
+                    { label: 'Ngoài giờ', data: data.charts.dailyOut, backgroundColor: '#feb019', borderRadius: 4 },
+                    { label: 'Quá SLA', data: data.charts.dailySLA, backgroundColor: '#ff4560', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                plugins: { 
+                    datalabels: { display: context => context.dataset.data[context.dataIndex] > 0, color: '#fff' } 
+                }
+            }
+        });
+
+        // --- [MOD] TỶ TRỌNG SẢN PHẨM HỖ TRỢ - THÊM LEGEND BÊN PHẢI ---
+        const metricLabels = data.metrics.map(m => m.name);
+        const metricTotals = data.metrics.map(m => m.in + m.out);
+        const productColors = [
+            '#2962ff', '#00e396', '#feb019', '#ff4560', '#775dd0', 
+            '#008ffb', '#ff7675', '#a29bfe', '#55efc4', '#ffeaa7',
+            '#fd79a8', '#fab1a0', '#00cec9', '#0984e3', '#6c5ce7'
+        ];
+
+        compChart = new Chart(ctxComp, {
+            type: 'doughnut',
+            data: {
+                labels: metricLabels,
+                datasets: [{ 
+                    data: metricTotals, 
+                    backgroundColor: productColors.slice(0, metricLabels.length), 
+                    borderWidth: 0 
+                }]
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false, cutout: '60%', 
+                layout: { padding: { right: 20 } },
+                plugins: { 
+                    // --- ĐÂY LÀ PHẦN THÊM LEGEND NHƯ ẢNH ĐẠI CA GỬI ---
+                    legend: { 
+                        display: true, 
+                        position: 'right',
+                        labels: {
+                            color: '#e0e0e0',
+                            font: { size: 11, family: "'Inter', sans-serif" },
+                            boxWidth: 12,
+                            padding: 12,
+                            usePointStyle: true,
+                            pointStyle: 'rectRounded'
+                        }
+                    },
+                    datalabels: { 
+                        display: true, 
+                        color: '#fff', 
+                        font: {weight: 'bold', size: 10},
+                        formatter: (val, ctx) => {
+                            let total = ctx.chart.data.datasets[0].data.reduce((a,b) => a+b, 0);
+                            return (total > 0 && (val*100/total) > 5) ? (val*100/total).toFixed(1) + '%' : '';
+                        }
+                    } 
+                } 
+            }
+        });
+
+        const hoursLabels = Array.from({length: 24}, (_, i) => i + 'h');
+        const colors = ['#2962ff', '#00e396', '#feb019', '#ff4560', '#775dd0', '#008ffb', '#00e396', '#feb019'];
+        
+        // Đảm bảo dữ liệu hourlySeries tồn tại trước khi map
+        const hourlySeriesData = (data.charts && data.charts.hourlySeries) ? data.charts.hourlySeries : [];
+        
+        const hourlyDatasets = hourlySeriesData.map((series, index) => ({
+            label: series.label,
+            data: series.data,
+            backgroundColor: colors[index % colors.length],
+            stack: 'Stack 0',
+        }));
+
+        hourlyChart = new Chart(ctxHourly, {
+            type: 'bar',
+            data: {
+                labels: hoursLabels,
+                datasets: hourlyDatasets
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, beginAtZero: true, grid: { color: '#232832' } }
+                },
+                plugins: {
+                    datalabels: { display: false },
+                    legend: { position: 'top', labels: { boxWidth: 10, font: {size: 10} } },
+                    tooltip: { mode: 'index', intersect: false }
+                }
+            }
+        });
+
+        // --- KHÔI PHỤC DỮ LIỆU SCATTER (MẬT ĐỘ LỖI) ---
+        const scatterSlaData = (data.scatterData && data.scatterData.sla) ? data.scatterData.sla : [];
+
+        scatterChart = new Chart(ctxScatter, {
+            type: 'scatter', 
+            data: {
+                datasets: [
+                    {
+                        label: 'Sự cố (Quá SLA)',
+                        data: scatterSlaData, 
+                        backgroundColor: '#ff4560',
+                        pointRadius: 5,
+                        pointHoverRadius: 8,
+                        borderColor: '#fff',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time', 
+                        time: {
+                            unit: 'day', 
+                            displayFormats: { day: 'dd/MM' },
+                            tooltipFormat: 'dd/MM/yyyy HH:mm' 
+                        },
+                        min: dStart, 
+                        max: dEnd,   
+                        grid: { color: '#2b3139', lineWidth: 1 },
+                        ticks: { color: '#fff', font: { weight: 'bold' } }
+                    },
+                    y: {
+                        min: 0, max: 24,
+                        reverse: true,
+                        ticks: { 
+                            stepSize: 1, color: '#848e9c', 
+                            callback: function(value) { return value + 'h'; } 
+                        },
+                        grid: { color: '#232832' },
+                        title: { display: true, text: 'Giờ trong ngày', color: '#555' }
+                    }
+                },
+                plugins: {
+                    datalabels: { display: false },
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const raw = context.raw;
+                                const date = new Date(raw.x);
+                                const timeStr = date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'});
+                                return `${raw.label || 'Quá SLA'}: ${timeStr} (${date.getDate()}/${date.getMonth()+1})`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function switchProfile() {
+        const uid = document.getElementById('profileSelector').value;
+        const uData = db[uid];
+        if(!uData) return; 
+
+        document.getElementById('u-name').innerText = uData.name;
+        document.getElementById('u-avatar').innerText = uData.avatar;
+        document.getElementById('kpi-days').innerText = uData.workDays;
+        document.getElementById('kpi-in').innerText = uData.totalIn.toLocaleString();
+        document.getElementById('kpi-out').innerText = uData.totalOut.toLocaleString();
+        document.getElementById('kpi-total').innerText = uData.total.toLocaleString();
+        renderGrowth(uData.growth, 'kpi-growth');
+
+        document.getElementById('kpi-sla-count').innerText = uData.stats.slaCount;
+        renderGrowth(uData.stats.slaGrowth, 'kpi-sla-growth');
+        
+        const slaRate = uData.total > 0 ? ((uData.stats.slaCount / uData.total) * 100).toFixed(1) : 0;
+        document.getElementById('kpi-sla-rate').innerText = slaRate + "%";
+        
+        renderDetailedMetrics(uData.metrics);
+        updateCharts(uData);
+    }
+
+    let detailChart1, detailChart2;
+
+    function openDetail(metricId) {
+        const uid = document.getElementById('profileSelector').value;
+        const uData = db[uid];
+        const metric = uData.metrics.find(m => m.id === metricId);
+        
+        if(!metric) return;
+
+        document.getElementById('modalTitle').innerText = metric.name;
+        document.getElementById('d-in').innerText = metric.in;
+        document.getElementById('d-out').innerText = metric.out;
+        document.getElementById('d-total').innerText = metric.in + metric.out;
+
+        const labelBox3 = document.querySelector('.stat-box-detail:nth-child(3) .lbl');
+        const valBox3 = document.getElementById('d-sla');
+        const box3 = document.querySelector('.stat-box-detail:nth-child(3)');
+
+        if (metric.minutes !== undefined && metric.minutes !== null && metric.minutes > 0) {
+            labelBox3.innerText = "TỔNG THỜI GIAN";
+            labelBox3.style.color = "var(--purple)";
+            valBox3.innerText = formatTime(metric.minutes);
+            valBox3.style.color = "var(--purple)";
+            box3.style.borderBottomColor = "var(--purple)";
+        } else {
+            labelBox3.innerText = "QUÁ SLA";
+            labelBox3.style.color = "var(--text-muted)";
+            valBox3.innerText = metric.sla || 0;
+            valBox3.style.color = "#fff";
+            box3.style.borderBottomColor = "var(--danger)";
+        }
+
+        renderDetailCharts(metric, uData);
+        document.getElementById('detailModal').style.display = "block";
+    }
+
+    function closeDetail() {
+        document.getElementById('detailModal').style.display = "none";
+    }
+
+    window.onclick = function(event) {
+        const modal = document.getElementById('detailModal');
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    }
+
+    function renderDetailCharts(metric, uData) {
+        const ctx1 = document.getElementById('detailDailyChart').getContext('2d');
+        const ctx2 = document.getElementById('detailTeamChart').getContext('2d');
+
+        if(detailChart1) detailChart1.destroy();
+        if(detailChart2) detailChart2.destroy();
+
+        const thisProductTotal = metric.in + metric.out;
+        const otherWork = uData.total - thisProductTotal; 
+        const validOther = otherWork > 0 ? otherWork : 0;
+
+        detailChart1 = new Chart(ctx1, {
+            type: 'doughnut', 
+            data: {
+                labels: ['SP này (Trong giờ)', 'SP này (Ngoài giờ)', 'Các việc khác'],
+                datasets: [{
+                    data: [metric.in, metric.out, validOther],
+                    backgroundColor: [ '#2962ff', '#feb019', '#2b3139' ],
+                    borderWidth: 0,
+                    hoverOffset: 10
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '60%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: {size: 11} } },
+                    datalabels: { 
+                        color: '#fff', 
+                        font: { weight: 'bold', size: 11 }, 
+                        formatter: (val) => uData.total > 0 ? ((val/uData.total)*100).toFixed(1) + '%' : '0%' 
+                    }
+                }
+            }
+        });
+
+        // So sánh SP này của user với cả phòng
+        detailChart2 = new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: ['Của Đại Ca', 'Còn lại của Phòng'],
+                datasets: [{
+                    data: [thisProductTotal, Math.max(0, uData.totalRoom - thisProductTotal)],
+                    backgroundColor: ['#00e396', '#2b3139'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    datalabels: { 
+                        color: '#fff', 
+                        font: {weight:'bold'}, 
+                        formatter: (val) => uData.totalRoom > 0 ? ((val/uData.totalRoom)*100).toFixed(1) + '%' : '0%' 
+                    }
+                }
+            }
+        });
+    }
+
+    window.onload = function() {
+        initDateRange(); 
+        fetchDataFromAPI(); 
+    };
+
+</script>
+</body>
+</html>
